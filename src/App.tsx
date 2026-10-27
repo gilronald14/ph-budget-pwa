@@ -206,18 +206,32 @@ function App() {
           )}
 
           <div className="salary-quick">
-            <button className={monthData.salary1 ? 'set' : ''} onClick={() => setShowSalaryForm({ period: 1 })}>
-              15th: {monthData.salary1 ? formatPHP(monthData.salary1) : 'Set Salary'}
-            </button>
-            <button className={monthData.salary2 ? 'set' : ''} onClick={() => setShowSalaryForm({ period: 2 })}>
-              30th: {monthData.salary2 ? formatPHP(monthData.salary2) : 'Set Salary'}
-            </button>
-            <button className={monthData?.startingSavings ? 'set' : ''} onClick={() => setShowSavingsForm(true)}>
-              Savings: {monthData?.startingSavings ? formatPHP(monthData.startingSavings) : 'Add Savings'}
-            </button>
-            <button className={monthData?.manualBudget ? 'set' : ''} onClick={() => setShowBudgetForm(true)}>
-              Budget: {monthData?.manualBudget ? formatPHP(monthData.manualBudget) : 'Set Budget'}
-            </button>
+            {activePeriod === 1 && (
+              <>
+                <button className={monthData.salary1 ? 'set' : ''} onClick={() => setShowSalaryForm({ period: 1 })}>
+                  15th: {monthData.salary1 ? formatPHP(monthData.salary1) : 'Set Salary'}
+                </button>
+                <button className={monthData?.startingSavings ? 'set' : ''} onClick={() => setShowSavingsForm(true)}>
+                  Savings: {monthData?.startingSavings ? formatPHP(monthData.startingSavings) : 'Add Savings'}
+                </button>
+                <button className={monthData?.manualBudget ? 'set' : ''} onClick={() => setShowBudgetForm(true)}>
+                  Budget: {monthData?.manualBudget ? formatPHP(monthData.manualBudget) : 'Set Budget'}
+                </button>
+              </>
+            )}
+            {activePeriod === 2 && (
+              <>
+                <button className={monthData.salary2 ? 'set' : ''} onClick={() => setShowSalaryForm({ period: 2 })}>
+                  30th: {monthData.salary2 ? formatPHP(monthData.salary2) : 'Set Salary'}
+                </button>
+                <button className={monthData?.startingSavings ? 'set' : ''} onClick={() => setShowSavingsForm(true)}>
+                  Savings: {monthData?.startingSavings ? formatPHP(monthData.startingSavings) : 'Add Savings'}
+                </button>
+                <button className={monthData?.manualBudget ? 'set' : ''} onClick={() => setShowBudgetForm(true)}>
+                  Budget: {monthData?.manualBudget ? formatPHP(monthData.manualBudget) : 'Set Budget'}
+                </button>
+              </>
+            )}
           </div>
         </section>
       )}
