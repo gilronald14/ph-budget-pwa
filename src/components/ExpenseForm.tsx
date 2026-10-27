@@ -134,3 +134,93 @@ export function SalaryForm({ onSubmit, period, currentAmount, onClose }: SalaryF
     </div>
   )
 }
+
+interface SavingsFormProps {
+  onSubmit: (amount: number) => void
+  currentAmount: number
+  onClose: () => void
+}
+
+export function SavingsForm({ onSubmit, currentAmount, onClose }: SavingsFormProps) {
+  const [amount, setAmount] = useState(currentAmount.toString())
+
+  const handleSubmit = (e: FormEvent) => {
+    e.preventDefault()
+    if (!amount && amount !== '0') return
+    onSubmit(parseFloat(amount) || 0)
+    onClose()
+  }
+
+  return (
+    <div className="modal" onClick={onClose}>
+      <form className="modal-box" onClick={e => e.stopPropagation()} onSubmit={handleSubmit}>
+        <div className="modal-handle" />
+        <h2>Starting Savings</h2>
+        <p className="hint">Money you already have before this month (carried over)</p>
+        
+        <label>
+          Amount (₱)
+          <input 
+            type="number" 
+            step="1" 
+            value={amount} 
+            onChange={e => setAmount(e.target.value)} 
+            placeholder="0"
+            required 
+            autoFocus
+          />
+        </label>
+
+        <div className="actions">
+          <button type="button" onClick={onClose}>Cancel</button>
+          <button type="submit">{currentAmount > 0 ? 'Update' : 'Save'}</button>
+        </div>
+      </form>
+    </div>
+  )
+}
+
+interface BudgetFormProps {
+  onSubmit: (amount: number) => void
+  currentAmount: number
+  onClose: () => void
+}
+
+export function BudgetForm({ onSubmit, currentAmount, onClose }: BudgetFormProps) {
+  const [amount, setAmount] = useState(currentAmount.toString())
+
+  const handleSubmit = (e: FormEvent) => {
+    e.preventDefault()
+    if (!amount && amount !== '0') return
+    onSubmit(parseFloat(amount) || 0)
+    onClose()
+  }
+
+  return (
+    <div className="modal" onClick={onClose}>
+      <form className="modal-box" onClick={e => e.stopPropagation()} onSubmit={handleSubmit}>
+        <div className="modal-handle" />
+        <h2>Set Budget (per period)</h2>
+        <p className="hint">₱5,000/month = ₱2,500 per period. Overrides auto-calculation.</p>
+        
+        <label>
+          Amount (₱)
+          <input 
+            type="number" 
+            step="1" 
+            value={amount} 
+            onChange={e => setAmount(e.target.value)} 
+            placeholder="2500"
+            required 
+            autoFocus
+          />
+        </label>
+
+        <div className="actions">
+          <button type="button" onClick={onClose}>Cancel</button>
+          <button type="submit">{currentAmount > 0 ? 'Update' : 'Set'}</button>
+        </div>
+      </form>
+    </div>
+  )
+}
