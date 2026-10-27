@@ -206,11 +206,11 @@ function App() {
           )}
 
           <div className="salary-quick">
-            <button className={monthData.salary2 ? 'set' : ''} onClick={() => setShowSalaryForm({ period: 2 })}>
-              15th: {monthData.salary2 ? formatPHP(monthData.salary2) : 'Set Salary'}
-            </button>
             <button className={monthData.salary1 ? 'set' : ''} onClick={() => setShowSalaryForm({ period: 1 })}>
-              30th: {monthData.salary1 ? formatPHP(monthData.salary1) : 'Set Salary'}
+              15th: {monthData.salary1 ? formatPHP(monthData.salary1) : 'Set Salary'}
+            </button>
+            <button className={monthData.salary2 ? 'set' : ''} onClick={() => setShowSalaryForm({ period: 2 })}>
+              30th: {monthData.salary2 ? formatPHP(monthData.salary2) : 'Set Salary'}
             </button>
             <button className={monthData?.startingSavings ? 'set' : ''} onClick={() => setShowSavingsForm(true)}>
               Savings: {monthData?.startingSavings ? formatPHP(monthData.startingSavings) : 'Add Savings'}
