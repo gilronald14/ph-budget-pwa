@@ -110,7 +110,7 @@ export function SalaryForm({ onSubmit, period, currentAmount, onClose }: SalaryF
     <div className="modal" onClick={onClose}>
       <form className="modal-box" onClick={e => e.stopPropagation()} onSubmit={handleSubmit}>
         <div className="modal-handle" />
-        <h2>Salary - {period === 1 ? '15th' : '30th'}</h2>
+        <h2>Salary - {period === 1 ? '30th' : '15th'}</h2>
         <p className="hint">Enter net pay (after deductions)</p>
         
         <label>
