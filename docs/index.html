@@ -5,7 +5,11 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="theme-color" content="#0d1b2a" />
     <meta name="description" content="Personal budgeting for Philippine pay periods" />
-    <link rel="manifest" href="/manifest.webmanifest" />
+    <!-- The PWA plugin injects the manifest link with the correct base path
+         (/ph-budget-pwa/manifest.webmanifest). A hardcoded "/manifest.webmanifest"
+         here pointed at the domain root, 404'd, and the browser used THAT one. -->
+    <link rel="icon" type="image/png" href="/ph-budget-pwa/icon-192.png" />
+    <link rel="apple-touch-icon" href="/ph-budget-pwa/icon-192.png" />
     <title>PH Budget</title>
     <script type="module" crossorigin src="/ph-budget-pwa/assets/index-B1VKJNRc.js"></script>
     <link rel="stylesheet" crossorigin href="/ph-budget-pwa/assets/index-DXbmjDuJ.css">

@@ -23,6 +23,7 @@
     "@types/react-dom": "^19.3.0",
     "@vitejs/plugin-react": "^6.1.2",
     "idb": "^8.0.4",
+    "lru-cache": "^11.5.3",
     "oxlint": "^1.89.0",
     "recharts": "^3.10.1",
     "typescript": "^7.0.2",
