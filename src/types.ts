@@ -12,6 +12,11 @@ export interface Transaction {
   customCategory?: string
   amount: number
   note?: string
+  /**
+   * Creation time in ms. Used only to keep entries that share the same date in a
+   * stable order, so the list never re-shuffles when a new day arrives.
+   */
+  createdAt?: number
 }
 
 export interface PayPeriodBudget {
@@ -23,11 +28,18 @@ export interface PayPeriodBudget {
 
 export interface MonthData {
   month: string
+  /** Salary belonging to the 1st–15th period (paid out on the 30th) */
   salary1: number
+  /** Salary belonging to the 15th–30th period (paid out on the 15th) */
   salary2: number
   expenses: Transaction[]
   budgets: PayPeriodBudget[]
-  startingSavings?: number  // Previous balance carried over
+  /** Legacy: one savings value for the whole month. Migrated into savings1 on load. */
+  startingSavings?: number
+  /** Savings kept for the 1st–15th period. Never added to savings2. */
+  savings1?: number
+  /** Savings kept for the 15th–30th period. Never added to savings1. */
+  savings2?: number
   monthlyBills?: MonthlyBill[]  // Fixed monthly bills with paid status
   manualBudget?: number  // Manual budget per period (overrides auto-calc)
 }
@@ -62,6 +74,21 @@ export const DEFAULT_CATEGORIES: {
 
 export const PAY_DATES = [15, 30]
 
+/** The two pay periods, always in calendar order. */
+export const PAY_PERIODS: (1 | 2)[] = [1, 2]
+
+/** Display name for each pay period. */
+export const PERIOD_LABEL: Record<1 | 2, string> = {
+  1: '1st–15th',
+  2: '15th–30th',
+}
+
+/** Which payout funds each period. Secondary text only. */
+export const PERIOD_PAYDAY: Record<1 | 2, string> = {
+  1: 'from 30th payout',
+  2: 'from 15th payout',
+}
+
 export function formatPHP(n: number): string {
   return new Intl.NumberFormat('en-PH', { 
     style: 'currency', 
@@ -71,11 +98,40 @@ export function formatPHP(n: number): string {
   }).format(n)
 }
 
+/**
+ * Which pay period a date falls in.
+ * Period 1 = 1st–15th, Period 2 = 15th–30th. The 15th is payday, so it starts
+ * the second period.
+ */
 export function getPayPeriod(date: Date = new Date()): 1 | 2 {
-  // Period 1: 1st-15th (paid by 30th salary from previous month)
-  // Period 2: 15th-30th (paid by 15th salary)
-  const day = date.getDate()
-  return day >= 15 ? 2 : 1
+  return date.getDate() >= 15 ? 2 : 1
+}
+
+/**
+ * Which pay period a "YYYY-MM-DD" string falls in.
+ * Parsed at midday so a timezone offset can never shift the day.
+ */
+export function getPayPeriodFromDate(dateStr: string, fallback: 1 | 2 = 1): 1 | 2 {
+  const t = Date.parse(`${dateStr}T12:00:00`)
+  if (Number.isNaN(t)) return fallback
+  return getPayPeriod(new Date(t))
+}
+
+/**
+ * Which period a stored transaction belongs to.
+ * The DATE is the source of truth, not the stored payPeriod, so entries filed
+ * under the wrong tab previously still land in the right period.
+ */
+export function getTransactionPeriod(t: { date: string; payPeriod: number }): 1 | 2 {
+  const fallback: 1 | 2 = t.payPeriod === 1 ? 1 : 2
+  return getPayPeriodFromDate(t.date, fallback)
+}
+
+/** Savings for one period, migrating the legacy single value into the first one. */
+export function getPeriodSavings(m: MonthData | undefined, period: 1 | 2): number {
+  if (!m) return 0
+  if (period === 1) return m.savings1 ?? m.startingSavings ?? 0
+  return m.savings2 ?? 0
 }
 
 export function getCurrentMonthKey(): string {
@@ -84,7 +140,7 @@ export function getCurrentMonthKey(): string {
 }
 
 export function getPayPeriodLabel(period: 1 | 2): string {
-  return period === 1 ? '1st–15th' : '15th–30th'
+  return PERIOD_LABEL[period]
 }
 
 export function getPayPeriodRange(month: string, period: 1 | 2): { start: Date; end: Date } {

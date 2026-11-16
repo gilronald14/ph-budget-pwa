@@ -64,7 +64,9 @@ header { margin-bottom: 20px; }
 .period-tabs button:not(.active):hover { border-color: var(--accent); color: var(--accent); }
 
 /* Summary Cards */
-.summary-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 20px; }
+/* Two columns: each card now carries a line per pay period, so four across a
+   480px column squeezed the labels onto two or three lines. */
+.summary-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin-bottom: 20px; }
 @media (max-width: 480px) {
   .summary-grid { grid-template-columns: repeat(2, 1fr); }
 }
@@ -78,6 +80,21 @@ header { margin-bottom: 20px; }
 .card.expenses strong { color: var(--red); }
 .card.savings strong.positive { color: var(--green); }
 .card.savings strong.negative { color: var(--red); }
+
+/* One row per pay period inside a summary card */
+.card small.split-line { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; font-size: 0.72rem; }
+.card small.split-line b { font-weight: 600; color: var(--text); white-space: nowrap; }
+.card small.split-line.total { color: var(--text); font-weight: 600; border-top: 1px solid var(--border); margin-top: 6px; padding-top: 5px; }
+.card small.split-line.total b { color: var(--orange); }
+
+/* Savings card: two separate buttons, one per period (never summed) */
+.card-rows { display: flex; flex-direction: column; gap: 6px; margin-top: 4px; }
+.card-row { display: flex; justify-content: space-between; align-items: center; gap: 8px; width: 100%; background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 6px 10px; color: var(--text); font-size: 0.75rem; font-family: inherit; cursor: pointer; transition: var(--transition); }
+.card-row em { font-style: normal; color: var(--text-muted); }
+.card-row b { font-weight: 700; }
+.card-row:hover { border-color: var(--accent); }
+.card-row.is-set { border-color: var(--green); background: var(--green-bg); }
+.card-row.is-set b { color: var(--green); }
 
 /* Period Progress */
 .period-progress { margin-bottom: 20px; }
@@ -118,6 +135,17 @@ header { margin-bottom: 20px; }
   .fab-text { display: inline; }
 }
 
+/* One block per pay period, each with its own subtotal */
+.period-group { margin-bottom: 16px; }
+.period-group-header { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; padding: 0 4px 8px; border-bottom: 1px solid var(--border); margin-bottom: 8px; }
+.period-group-header span { font-size: 0.8rem; font-weight: 600; color: var(--text); }
+.period-group-header em { font-style: normal; font-weight: 400; color: var(--text-muted); font-size: 0.7rem; }
+.period-group-header strong { font-size: 0.9rem; color: var(--red); white-space: nowrap; }
+
+.month-total-row { display: flex; justify-content: space-between; align-items: baseline; background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px 16px; margin-top: 4px; }
+.month-total-row span { font-size: 0.85rem; font-weight: 600; color: var(--text); }
+.month-total-row strong { font-size: 1.05rem; color: var(--red); }
+
 .expense-list { list-style: none; }
 .expense-list li { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px 16px; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center; transition: var(--transition); }
 .expense-list li:hover { border-color: var(--accent); background: var(--card-hover); }
@@ -130,7 +158,7 @@ header { margin-bottom: 20px; }
 .amount { font-weight: 600; color: var(--red); font-size: 0.95rem; }
 .expense-list button { background: none; border: none; color: var(--text-muted); font-size: 1.1rem; cursor: pointer; padding: 4px; opacity: 0.6; transition: var(--transition); }
 .expense-list button:hover { opacity: 1; color: var(--red); }
-.empty { text-align: center; color: var(--text-muted); padding: 32px; font-size: 0.9rem; }
+.empty { text-align: center; color: var(--text-muted); padding: 24px; font-size: 0.85rem; }
 
 /* Modals */
 .modal { position: fixed; inset: 0; background: rgba(0,0,0,0.7); display: flex; align-items: flex-end; z-index: 100; padding: 16px; animation: fadeIn 0.2s ease; }
@@ -140,6 +168,8 @@ header { margin-bottom: 20px; }
 .modal-handle { width: 40px; height: 4px; background: var(--border); border-radius: 2px; margin: 0 auto 16px; }
 .modal-box h2 { margin-bottom: 20px; font-size: 1.1rem; }
 .hint { color: var(--text-muted); font-size: 0.8rem; margin-bottom: 16px; }
+.hint.period-hint { margin-top: -8px; }
+.hint.period-hint strong { color: var(--accent); }
 .modal-box label { display: flex; flex-direction: column; gap: 8px; margin-bottom: 16px; font-size: 0.85rem; font-weight: 500; }
 .modal-box input, .modal-box select { padding: 14px 16px; border-radius: var(--radius-sm); border: 1px solid var(--border); background: var(--bg); color: var(--text); font-size: 1rem; transition: var(--transition); }
 .modal-box input:focus, .modal-box select:focus { outline: none; border-color: var(--accent); }

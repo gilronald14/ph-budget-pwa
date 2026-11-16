@@ -1,20 +1,25 @@
 import { useState, FormEvent } from 'react'
-import { Transaction, Category, DEFAULT_CATEGORIES } from '../types'
+import {
+  Transaction, Category, DEFAULT_CATEGORIES,
+  PERIOD_LABEL, PERIOD_PAYDAY, getPayPeriodFromDate
+} from '../types'
 
 interface Props {
   onSubmit: (tx: Omit<Transaction, 'id'>) => void
-  period: 1 | 2
   month: string
   onClose: () => void
 }
 
-export function ExpenseForm({ onSubmit, period, month, onClose }: Props) {
+export function ExpenseForm({ onSubmit, month, onClose }: Props) {
   const [amount, setAmount] = useState('')
   const [category, setCategory] = useState<Category>('Food')
   const [customCategory, setCustomCategory] = useState('')
   const [note, setNote] = useState('')
   const [date, setDate] = useState(() => new Date().toISOString().split('T')[0])
   const [showCustom, setShowCustom] = useState(false)
+
+  // The date decides the period, so an expense can never land in the wrong one.
+  const period = getPayPeriodFromDate(date)
 
   const handleSubmit = (e: FormEvent) => {
     e.preventDefault()
@@ -43,6 +48,10 @@ export function ExpenseForm({ onSubmit, period, month, onClose }: Props) {
           Date
           <input type="date" value={date} onChange={e => setDate(e.target.value)} required />
         </label>
+
+        <p className="hint period-hint">
+          Counted in <strong>{PERIOD_LABEL[period]}</strong> ({PERIOD_PAYDAY[period]})
+        </p>
 
         <label>
           Amount (₱)
@@ -110,8 +119,11 @@ export function SalaryForm({ onSubmit, period, currentAmount, onClose }: SalaryF
     <div className="modal" onClick={onClose}>
       <form className="modal-box" onClick={e => e.stopPropagation()} onSubmit={handleSubmit}>
         <div className="modal-handle" />
-        <h2>Salary - {period === 1 ? '30th' : '15th'}</h2>
-        <p className="hint">Enter net pay (after deductions)</p>
+        <h2>Salary — {PERIOD_LABEL[period]}</h2>
+        <p className="hint">
+          Enter net pay (after deductions). Counts for the {PERIOD_LABEL[period]} period only
+          ({PERIOD_PAYDAY[period]}) — it is not added to the other period.
+        </p>
         
         <label>
           Amount (₱)
@@ -136,18 +148,19 @@ export function SalaryForm({ onSubmit, period, currentAmount, onClose }: SalaryF
 }
 
 interface SavingsFormProps {
-  onSubmit: (amount: number) => void
+  onSubmit: (period: 1 | 2, amount: number) => void
+  period: 1 | 2
   currentAmount: number
   onClose: () => void
 }
 
-export function SavingsForm({ onSubmit, currentAmount, onClose }: SavingsFormProps) {
+export function SavingsForm({ onSubmit, period, currentAmount, onClose }: SavingsFormProps) {
   const [amount, setAmount] = useState(currentAmount.toString())
 
   const handleSubmit = (e: FormEvent) => {
     e.preventDefault()
     if (!amount && amount !== '0') return
-    onSubmit(parseFloat(amount) || 0)
+    onSubmit(period, parseFloat(amount) || 0)
     onClose()
   }
 
@@ -155,8 +168,11 @@ export function SavingsForm({ onSubmit, currentAmount, onClose }: SavingsFormPro
     <div className="modal" onClick={onClose}>
       <form className="modal-box" onClick={e => e.stopPropagation()} onSubmit={handleSubmit}>
         <div className="modal-handle" />
-        <h2>Starting Savings</h2>
-        <p className="hint">Money you already have before this month (carried over)</p>
+        <h2>Savings — {PERIOD_LABEL[period]}</h2>
+        <p className="hint">
+          Savings kept for the {PERIOD_LABEL[period]} period ({PERIOD_PAYDAY[period]}).
+          Each period has its own savings — they are not added together.
+        </p>
         
         <label>
           Amount (₱)

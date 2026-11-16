@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { 
   Transaction, MonthData, DEFAULT_CATEGORIES, formatPHP, 
-  getCurrentMonthKey, getPayPeriod, getPayPeriodLabel 
+  getCurrentMonthKey, getPayPeriod, PERIOD_LABEL, PERIOD_PAYDAY
 } from './types'
 import { 
   addTransaction, getTransactionsByMonth, deleteTransaction,
@@ -10,7 +10,8 @@ import {
 import { 
   calculateMonthSummary, getCategoryBreakdown, getDefaultBudgets, 
   getMonthlyChartData, getPayPeriodProgress, getDefaultMonthlyBills,
-  calculateMonthlyBillsPaidStatus
+  calculateMonthlyBillsPaidStatus, getPeriodTotals, getExpensesForPeriod,
+  sortTransactionsNewestFirst
 } from './utils'
 import { CategoryPieChart, MonthlyBarChart, PeriodProgressBar } from './components/Charts'
 import { ExpenseForm, SalaryForm, SavingsForm, BudgetForm } from './components/ExpenseForm'
@@ -23,9 +24,9 @@ function App() {
   const [allMonths, setAllMonths] = useState<MonthData[]>([])
   const [showExpenseForm, setShowExpenseForm] = useState(false)
   const [showSalaryForm, setShowSalaryForm] = useState<{ period: 1 | 2 } | null>(null)
-  const [showSavingsForm, setShowSavingsForm] = useState(false)
+  const [showSavingsForm, setShowSavingsForm] = useState<{ period: 1 | 2 } | null>(null)
   const [showBudgetForm, setShowBudgetForm] = useState(false)
-  const [activePeriod, setActivePeriod] = useState<1 | 2>(getPayPeriod() as 1 | 2)
+  const [activePeriod, setActivePeriod] = useState<1 | 2>(getPayPeriod())
   const [loading, setLoading] = useState(true)
 
   useEffect(() => { loadMonth() }, [month])
@@ -33,32 +34,43 @@ function App() {
 
   async function loadMonth() {
     setLoading(true)
-    const [txs, mData] = await Promise.all([
+    const [txs, stored] = await Promise.all([
       getTransactionsByMonth(month),
       getMonthData(month)
     ])
-    setTransactions(txs.reverse())
-    setMonthData(mData)
-    // Always recalculate budgets if manualBudget is set, or if no budgets exist
-    if (mData && (mData.manualBudget || !mData.budgets.length)) {
-      const budgets = getDefaultBudgets(mData)
-      await saveMonthData({ ...mData, budgets })
-      setMonthData({ ...mData, budgets })
-    }
-    if (mData && !mData.monthlyBills?.length) {
-      const monthlyBills = getDefaultMonthlyBills()
-      await saveMonthData({ ...mData, monthlyBills })
-      setMonthData({ ...mData, monthlyBills })
-    }
-    // Auto-calculate monthly bills paid status based on expenses
-    if (mData && mData.monthlyBills?.length) {
-      const updatedBills = calculateMonthlyBillsPaidStatus(mData.monthlyBills, txs, month)
-      if (JSON.stringify(updatedBills) !== JSON.stringify(mData.monthlyBills)) {
-        const updated = { ...mData, monthlyBills: updatedBills }
-        await saveMonthData(updated)
-        setMonthData(updated)
+    // Sorted ONCE, here, newest first by date. Nothing re-orders the list later,
+    // so entries no longer jump around from one day to the next.
+    setTransactions(sortTransactionsNewestFirst(txs))
+
+    let data = stored
+    if (data) {
+      let changed = false
+
+      // Months saved with the old single savings value: keep that money in the
+      // 1st-15th period instead of showing it in both.
+      if (data.savings1 === undefined && data.savings2 === undefined && data.startingSavings) {
+        data = { ...data, savings1: data.startingSavings }
+        changed = true
       }
+      // Always recalculate budgets if manualBudget is set, or if no budgets exist
+      if (data.manualBudget || !data.budgets?.length) {
+        data = { ...data, budgets: getDefaultBudgets(data) }
+        changed = true
+      }
+      const bills = data.monthlyBills
+      if (!bills || bills.length === 0) {
+        data = { ...data, monthlyBills: getDefaultMonthlyBills() }
+        changed = true
+      } else {
+        const updatedBills = calculateMonthlyBillsPaidStatus(bills, txs, month)
+        if (JSON.stringify(updatedBills) !== JSON.stringify(bills)) {
+          data = { ...data, monthlyBills: updatedBills }
+          changed = true
+        }
+      }
+      if (changed) await saveMonthData(data)
     }
+    setMonthData(data)
     setLoading(false)
   }
 
@@ -68,9 +80,9 @@ function App() {
   }
 
   const handleAddExpense = async (tx: Omit<Transaction, 'id'>) => {
-    const newTx: Transaction = { ...tx, id: crypto.randomUUID() }
+    const newTx: Transaction = { ...tx, id: crypto.randomUUID(), createdAt: Date.now() }
     await addTransaction(newTx)
-    setTransactions([newTx, ...transactions])
+    setTransactions(sortTransactionsNewestFirst([newTx, ...transactions]))
   }
 
   const handleDeleteExpense = async (id: string) => {
@@ -79,10 +91,10 @@ function App() {
   }
 
   const handleSaveSalary = async (period: 1 | 2, amount: number) => {
-    const updated: MonthData = monthData 
-      ? { ...monthData, [`salary${period}`]: amount }
+    const base: MonthData = monthData 
+      ? { ...monthData }
       : { month, salary1: 0, salary2: 0, expenses: [], budgets: [] }
-    updated[`salary${period}`] = amount
+    const updated: MonthData = period === 1 ? { ...base, salary1: amount } : { ...base, salary2: amount }
     // Recalculate budgets (respects manualBudget if set)
     updated.budgets = getDefaultBudgets(updated)
     await saveMonthData(updated)
@@ -90,16 +102,15 @@ function App() {
     setShowSalaryForm(null)
   }
 
-  const handleSaveSavings = async (amount: number) => {
-    const updated: MonthData = monthData 
-      ? { ...monthData, startingSavings: amount }
+  const handleSaveSavings = async (period: 1 | 2, amount: number) => {
+    const base: MonthData = monthData 
+      ? { ...monthData }
       : { month, salary1: 0, salary2: 0, expenses: [], budgets: [] }
-    updated.startingSavings = amount
-    // Recalculate budgets (respects manualBudget if set)
+    const updated: MonthData = period === 1 ? { ...base, savings1: amount } : { ...base, savings2: amount }
     updated.budgets = getDefaultBudgets(updated)
     await saveMonthData(updated)
     setMonthData(updated)
-    setShowSavingsForm(false)
+    setShowSavingsForm(null)
   }
 
   const handleSaveBudget = async (amount: number) => {
@@ -119,11 +130,14 @@ function App() {
     setActivePeriod(getPayPeriod())
   }
 
-  const summary = monthData ? calculateMonthSummary(monthData, transactions) : { totalSalary: 0, totalExpenses: 0, savings: 0, periodSummaries: [], totalBalance: 0, startingSavings: 0 }
-  const currentPeriodExpenses = transactions.filter(t => t.type === 'expense' && t.payPeriod === activePeriod)
+  const summary = calculateMonthSummary(monthData, transactions)
+  const activeSummary = summary.periodSummaries[activePeriod - 1]
+  const totals = getPeriodTotals(transactions)
+  const expensesPeriod1 = getExpensesForPeriod(transactions, 1)
+  const expensesPeriod2 = getExpensesForPeriod(transactions, 2)
   const categoryData = getCategoryBreakdown(transactions, activePeriod)
   const monthlyChartData = getMonthlyChartData(allMonths, transactions)
-  const progress = monthData ? getPayPeriodProgress(monthData, transactions, activePeriod) : { spent: 0, budget: 0, pct: 0, daysLeft: 0 }
+  const progress = getPayPeriodProgress(monthData, transactions, activePeriod)
 
   if (loading) return <div className="loading">Loading...</div>
 
@@ -151,43 +165,63 @@ function App() {
               className={activePeriod === p ? 'active' : ''} 
               onClick={() => setActivePeriod(p)}
             >
-              {getPayPeriodLabel(p)}
+              {PERIOD_LABEL[p]}
             </button>
           ))}
         </div>
       </header>
 
       <section className="summary-grid">
-        <div className="card salary clickable" onClick={() => setShowSalaryForm({ period: 1 })}>
-          <span>Salary This Month</span>
-          <strong>{formatPHP(summary.totalSalary)}</strong>
-          <small>15th: {formatPHP(monthData?.salary1 || 0)} • 30th: {formatPHP(monthData?.salary2 || 0)}</small>
+        {/* Salary: the active period on top, both periods listed separately below */}
+        <div className="card salary clickable" onClick={() => setShowSalaryForm({ period: activePeriod })}>
+          <span>Salary {PERIOD_LABEL[activePeriod]}</span>
+          <strong>{formatPHP(activeSummary.salary)}</strong>
+          <small className="split-line">{PERIOD_LABEL[1]}<b>{formatPHP(summary.periodSummaries[0].salary)}</b></small>
+          <small className="split-line">{PERIOD_LABEL[2]}<b>{formatPHP(summary.periodSummaries[1].salary)}</b></small>
         </div>
+
+        {/* Expenses: each period separate, plus one monthly total */}
         <div className="card expenses">
-          <span>Total Expenses</span>
-          <strong>{formatPHP(summary.totalExpenses)}</strong>
+          <span>Expenses {PERIOD_LABEL[activePeriod]}</span>
+          <strong>{formatPHP(activeSummary.spent)}</strong>
+          <small className="split-line">{PERIOD_LABEL[1]}<b>{formatPHP(totals.period1)}</b></small>
+          <small className="split-line">{PERIOD_LABEL[2]}<b>{formatPHP(totals.period2)}</b></small>
+          <small className="split-line total">Month total<b>{formatPHP(totals.month)}</b></small>
         </div>
-        <div className="card savings clickable" onClick={() => setShowSavingsForm(true)}>
-          <span>Savings (Carryover)</span>
-          <strong>{formatPHP(summary.startingSavings || 0)}</strong>
-          <small>{(summary.startingSavings || 0) > 0 
-                            ? `Carried from last month`
-                            : 'Tap to add savings'}</small>
+
+        {/* Savings: two separate inputs, deliberately never added together */}
+        <div className="card savings">
+          <span>Savings</span>
+          <div className="card-rows">
+            <button 
+              className={summary.savings1 ? 'card-row is-set' : 'card-row'} 
+              onClick={() => setShowSavingsForm({ period: 1 })}
+            >
+              <em>{PERIOD_LABEL[1]}</em><b>{formatPHP(summary.savings1)}</b>
+            </button>
+            <button 
+              className={summary.savings2 ? 'card-row is-set' : 'card-row'} 
+              onClick={() => setShowSavingsForm({ period: 2 })}
+            >
+              <em>{PERIOD_LABEL[2]}</em><b>{formatPHP(summary.savings2)}</b>
+            </button>
+          </div>
         </div>
+
         <div className="card balance">
           <span>Total Balance</span>
           <strong className={summary.totalBalance >= 0 ? 'positive' : 'negative'}>{formatPHP(summary.totalBalance)}</strong>
-          <small>Available after bills & expenses</small>
+          <small>savings + salary − expenses<br />(both periods combined)</small>
         </div>
       </section>
 
-      {monthData && monthData[`salary${activePeriod}`] > 0 && (
+      {monthData && activeSummary.salary > 0 && (
         <section className="period-progress">
-          <h3>{getPayPeriodLabel(activePeriod)} Budget</h3>
+          <h3>{PERIOD_LABEL[activePeriod]} Budget — {PERIOD_PAYDAY[activePeriod]}</h3>
           <PeriodProgressBar {...progress} />
 
           {/* Monthly Bills (Fixed Monthly Bills - Auto Paid/Unpaid based on expenses) */}
-          {monthData?.monthlyBills && monthData.monthlyBills.length > 0 && (
+          {monthData.monthlyBills && monthData.monthlyBills.length > 0 && (
             <section className="period-progress">
               <h3>Monthly Bills</h3>
               <ul>
@@ -206,39 +240,28 @@ function App() {
           )}
 
           <div className="salary-quick">
-            {activePeriod === 1 && (
-              <>
-                <button className={monthData.salary1 ? 'set' : ''} onClick={() => setShowSalaryForm({ period: 1 })}>
-                  First Salary: {monthData.salary1 ? formatPHP(monthData.salary1) : 'Set Salary'}
-                </button>
-                <button className={monthData?.startingSavings ? 'set' : ''} onClick={() => setShowSavingsForm(true)}>
-                  Savings: {monthData?.startingSavings ? formatPHP(monthData.startingSavings) : 'Add Savings'}
-                </button>
-                <button className={monthData?.manualBudget ? 'set' : ''} onClick={() => setShowBudgetForm(true)}>
-                  Budget: {monthData?.manualBudget ? formatPHP(monthData.manualBudget) : 'Set Budget'}
-                </button>
-              </>
-            )}
-            {activePeriod === 2 && (
-              <>
-                <button className={monthData.salary2 ? 'set' : ''} onClick={() => setShowSalaryForm({ period: 2 })}>
-                  Second Salary: {monthData.salary2 ? formatPHP(monthData.salary2) : 'Set Salary'}
-                </button>
-                <button className={monthData?.startingSavings ? 'set' : ''} onClick={() => setShowSavingsForm(true)}>
-                  Savings: {monthData?.startingSavings ? formatPHP(monthData.startingSavings) : 'Add Savings'}
-                </button>
-                <button className={monthData?.manualBudget ? 'set' : ''} onClick={() => setShowBudgetForm(true)}>
-                  Budget: {monthData?.manualBudget ? formatPHP(monthData.manualBudget) : 'Set Budget'}
-                </button>
-              </>
-            )}
+            <button className={monthData.salary1 ? 'set' : ''} onClick={() => setShowSalaryForm({ period: 1 })}>
+              Salary {PERIOD_LABEL[1]}: {monthData.salary1 ? formatPHP(monthData.salary1) : 'Set'}
+            </button>
+            <button className={monthData.salary2 ? 'set' : ''} onClick={() => setShowSalaryForm({ period: 2 })}>
+              Salary {PERIOD_LABEL[2]}: {monthData.salary2 ? formatPHP(monthData.salary2) : 'Set'}
+            </button>
+            <button className={summary.savings1 ? 'set' : ''} onClick={() => setShowSavingsForm({ period: 1 })}>
+              Savings {PERIOD_LABEL[1]}: {summary.savings1 ? formatPHP(summary.savings1) : 'Add'}
+            </button>
+            <button className={summary.savings2 ? 'set' : ''} onClick={() => setShowSavingsForm({ period: 2 })}>
+              Savings {PERIOD_LABEL[2]}: {summary.savings2 ? formatPHP(summary.savings2) : 'Add'}
+            </button>
+            <button className={monthData.manualBudget ? 'set' : ''} onClick={() => setShowBudgetForm(true)}>
+              Budget: {monthData.manualBudget ? formatPHP(monthData.manualBudget) : 'Set Budget'}
+            </button>
           </div>
         </section>
       )}
 
-      {!monthData || monthData[`salary${activePeriod}`] === 0 ? (
+      {(!monthData || activeSummary.salary === 0) && (
         <section className="period-progress">
-          <h3>{getPayPeriodLabel(activePeriod)}</h3>
+          <h3>{PERIOD_LABEL[activePeriod]}</h3>
           <div className="progress-bar">
             <div className="progress-header">
               <span>No salary set for this period</span>
@@ -249,43 +272,61 @@ function App() {
           </div>
           <div className="salary-quick">
             <button onClick={() => setShowSalaryForm({ period: activePeriod })}>
-              Set Salary for {getPayPeriodLabel(activePeriod)}
+              Set Salary for {PERIOD_LABEL[activePeriod]}
             </button>
           </div>
         </section>
-      ) : null}
+      )}
 
       <section className="chart-section">
-        <h3>Spending by Category - {getPayPeriodLabel(activePeriod)}</h3>
+        <h3>Spending by Category - {PERIOD_LABEL[activePeriod]}</h3>
         <CategoryPieChart data={categoryData.map(d => ({ category: d.category, amount: d.amount }))} />
       </section>
 
       <section className="expense-section">
         <div className="section-header">
-          <h3>Expenses - {getPayPeriodLabel(activePeriod)}</h3>
+          <h3>Expenses — both periods</h3>
           <button className="fab" onClick={() => setShowExpenseForm(true)}><span>+</span><span className="fab-text"> Add</span></button>
         </div>
-        {currentPeriodExpenses.length === 0 ? (
-          <p className="empty">No expenses for this period. Tap + to add.</p>
-        ) : (
-          <ul className="expense-list">
-            {currentPeriodExpenses.map(t => (
-              <li key={t.id}>
-                <div className="expense-info">
-                  <span className="category-badge">{t.category === 'Other' && t.customCategory ? t.customCategory : DEFAULT_CATEGORIES.find(c => c.value === t.category)?.icon || 'O'}</span>
-                  <div>
-                    <strong>{t.note || (t.category === 'Other' && t.customCategory ? t.customCategory : t.category)}</strong>
-                    <small>{new Date(t.date).toLocaleDateString('en-PH')}</small>
-                  </div>
-                </div>
-                <div className="expense-right">
-                  <span className="amount">−{formatPHP(t.amount)}</span>
-                  <button onClick={() => handleDeleteExpense(t.id)}>🗑</button>
-                </div>
-              </li>
-            ))}
-          </ul>
-        )}
+
+        {([1, 2] as const).map(p => {
+          const list = p === 1 ? expensesPeriod1 : expensesPeriod2
+          const periodTotal = p === 1 ? totals.period1 : totals.period2
+          return (
+            <div className="period-group" key={p}>
+              <div className="period-group-header">
+                <span>{PERIOD_LABEL[p]} <em>{PERIOD_PAYDAY[p]}</em></span>
+                <strong>{formatPHP(periodTotal)}</strong>
+              </div>
+              {list.length === 0 ? (
+                <p className="empty">No expenses in this period.</p>
+              ) : (
+                <ul className="expense-list">
+                  {list.map(t => (
+                    <li key={t.id}>
+                      <div className="expense-info">
+                        <span className="category-badge">{t.category === 'Other' && t.customCategory ? t.customCategory : DEFAULT_CATEGORIES.find(c => c.value === t.category)?.icon || 'O'}</span>
+                        <div>
+                          <strong>{t.note || (t.category === 'Other' && t.customCategory ? t.customCategory : t.category)}</strong>
+                          <small>{new Date(`${t.date}T00:00:00`).toLocaleDateString('en-PH')}</small>
+                        </div>
+                      </div>
+                      <div className="expense-right">
+                        <span className="amount">−{formatPHP(t.amount)}</span>
+                        <button onClick={() => handleDeleteExpense(t.id)}>🗑</button>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          )
+        })}
+
+        <div className="month-total-row">
+          <span>Total monthly expenses</span>
+          <strong>{formatPHP(totals.month)}</strong>
+        </div>
       </section>
 
       {allMonths.length > 0 && (
@@ -298,7 +339,6 @@ function App() {
       {showExpenseForm && (
         <ExpenseForm 
           onSubmit={handleAddExpense} 
-          period={activePeriod} 
           month={month} 
           onClose={() => setShowExpenseForm(false)} 
         />
@@ -307,15 +347,16 @@ function App() {
         <SalaryForm 
           onSubmit={handleSaveSalary} 
           period={showSalaryForm.period} 
-          currentAmount={monthData?.[`salary${showSalaryForm.period}`] || 0} 
+          currentAmount={monthData ? (showSalaryForm.period === 1 ? monthData.salary1 : monthData.salary2) : 0} 
           onClose={() => setShowSalaryForm(null)} 
         />
       )}
       {showSavingsForm && (
         <SavingsForm 
           onSubmit={handleSaveSavings} 
-          currentAmount={monthData?.startingSavings || 0} 
-          onClose={() => setShowSavingsForm(false)} 
+          period={showSavingsForm.period} 
+          currentAmount={showSavingsForm.period === 1 ? summary.savings1 : summary.savings2} 
+          onClose={() => setShowSavingsForm(null)} 
         />
       )}
       {showBudgetForm && (

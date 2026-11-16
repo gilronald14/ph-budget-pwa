@@ -1,6 +1,19 @@
-import { Transaction, MonthData, PayPeriodBudget, DEFAULT_CATEGORIES, getPayPeriodRange, MonthlyBill } from './types'
+import {
+  Transaction, MonthData, PayPeriodBudget, DEFAULT_CATEGORIES, getPayPeriodRange,
+  MonthlyBill, getTransactionPeriod, getPeriodSavings
+} from './types'
 
 const WORKING_DAYS_PER_PERIOD = 11
+
+export interface PeriodSummary {
+  period: 1 | 2
+  salary: number
+  savings: number
+  budget: number
+  spent: number
+  remaining: number
+  pct: number
+}
 
 export function calculatePeriodBudget(salary: number, _period: 1 | 2): { category: string; amount: number; frequency?: string; isMonthlyBill?: boolean; dueDate?: number }[] {
   const budgets: { category: string; amount: number; frequency?: string; isMonthlyBill?: boolean; dueDate?: number }[] = []
@@ -44,24 +57,75 @@ export function calculatePeriodBudget(salary: number, _period: 1 | 2): { categor
   return budgets
 }
 
+/**
+ * Newest first: by date, then by creation time.
+ * Returns a NEW array and always produces the same order for the same data, so
+ * entries never jump around when a new day arrives.
+ */
+export function sortTransactionsNewestFirst(transactions: Transaction[]): Transaction[] {
+  return [...transactions].sort((a, b) => {
+    if (a.date !== b.date) return a.date < b.date ? 1 : -1 // ISO dates sort as text
+    return (b.createdAt ?? 0) - (a.createdAt ?? 0)
+  })
+}
+
+/** Expenses of one single period, newest first. */
+export function getExpensesForPeriod(transactions: Transaction[], period: 1 | 2): Transaction[] {
+  return sortTransactionsNewestFirst(
+    transactions.filter(t => t.type === 'expense' && getTransactionPeriod(t) === period)
+  )
+}
+
+/** Per-period expense totals, plus the whole-month total. */
+export function getPeriodTotals(transactions: Transaction[]) {
+  const expenses = transactions.filter(t => t.type === 'expense')
+  const period1 = expenses
+    .filter(t => getTransactionPeriod(t) === 1)
+    .reduce((sum, t) => sum + t.amount, 0)
+  const period2 = expenses
+    .filter(t => getTransactionPeriod(t) === 2)
+    .reduce((sum, t) => sum + t.amount, 0)
+  return { period1, period2, month: period1 + period2 }
+}
+
+/**
+ * Month totals with each pay period kept separate.
+ * `totalBalance` is the only figure that spans both periods.
+ */
 export function calculateMonthSummary(monthData: MonthData | undefined, transactions: Transaction[]) {
-  if (!monthData) return { totalSalary: 0, totalExpenses: 0, savings: 0, periodSummaries: [], totalBalance: 0 }
-  
-  const totalSalary = monthData.salary1 + monthData.salary2
+  const emptySummaries: PeriodSummary[] = ([1, 2] as const).map(period => ({
+    period, salary: 0, savings: 0, budget: 0, spent: 0, remaining: 0, pct: 0
+  }))
+
+  if (!monthData) {
+    return {
+      totalSalary: 0,
+      totalExpenses: 0,
+      totalBalance: 0,
+      savings1: 0,
+      savings2: 0,
+      periodSummaries: emptySummaries
+    }
+  }
+
   const expenses = transactions.filter(t => t.type === 'expense')
   const totalExpenses = expenses.reduce((sum, t) => sum + t.amount, 0)
-  const monthlyCashFlow = totalSalary - totalExpenses
-  const startingSavings = monthData.startingSavings || 0
-  const totalBalance = startingSavings + monthlyCashFlow
+  const totalSalary = monthData.salary1 + monthData.salary2
+  const savings1 = getPeriodSavings(monthData, 1)
+  const savings2 = getPeriodSavings(monthData, 2)
+  const totalBalance = savings1 + savings2 + totalSalary - totalExpenses
 
-  const periodSummaries: { period: 1 | 2; salary: number; budget: number; spent: number; remaining: number; pct: number }[] = ([1, 2] as const).map(period => {
+  const periodSummaries: PeriodSummary[] = ([1, 2] as const).map(period => {
     const salary = period === 1 ? monthData.salary1 : monthData.salary2
-    const budget = monthData.budgets.find(b => b.period === period)?.allocated || 0
-    const periodExpenses = transactions.filter(t => t.type === 'expense' && t.payPeriod === period)
-    const spent = periodExpenses.reduce((sum, t) => sum + t.amount, 0)
+    const savings = period === 1 ? savings1 : savings2
+    const budget = monthData.budgets?.find(b => b.period === period)?.allocated || 0
+    const spent = expenses
+      .filter(t => getTransactionPeriod(t) === period)
+      .reduce((sum, t) => sum + t.amount, 0)
     return {
       period,
       salary,
+      savings,
       budget,
       spent,
       remaining: budget - spent,
@@ -69,12 +133,12 @@ export function calculateMonthSummary(monthData: MonthData | undefined, transact
     }
   })
 
-  return { totalSalary, totalExpenses, savings: monthlyCashFlow, periodSummaries, totalBalance, startingSavings }
+  return { totalSalary, totalExpenses, totalBalance, savings1, savings2, periodSummaries }
 }
 
 export function getCategoryBreakdown(transactions: Transaction[], period?: 1 | 2) {
   let filtered = transactions.filter(t => t.type === 'expense')
-  if (period) filtered = filtered.filter(t => t.payPeriod === period)
+  if (period) filtered = filtered.filter(t => getTransactionPeriod(t) === period)
   
   const map = new Map<string, { category: string; amount: number; count: number }>()
   
@@ -146,8 +210,9 @@ export function getMonthlyChartData(months: MonthData[], allTransactions: Transa
 
 export function getPayPeriodProgress(monthData: MonthData | undefined, transactions: Transaction[], period: 1 | 2) {
   if (!monthData) return { spent: 0, budget: 0, pct: 0, daysLeft: 0 }
-  const budget = monthData.budgets.find(b => b.period === period)?.allocated || 0
-  const spent = transactions.filter(t => t.type === 'expense' && t.payPeriod === period)
+  const budget = monthData.budgets?.find(b => b.period === period)?.allocated || 0
+  const spent = transactions
+    .filter(t => t.type === 'expense' && getTransactionPeriod(t) === period)
     .reduce((sum, t) => sum + t.amount, 0)
   const { end } = getPayPeriodRange(monthData.month, period)
   const daysLeft = Math.max(0, Math.ceil((end.getTime() - Date.now()) / 86400000))
