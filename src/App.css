@@ -135,12 +135,19 @@ header { margin-bottom: 20px; }
   .fab-text { display: inline; }
 }
 
-/* One block per pay period, each with its own subtotal */
+/* One block per pay period: a fold/unfold header with its own subtotal */
 .period-group { margin-bottom: 16px; }
-.period-group-header { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; padding: 0 4px 8px; border-bottom: 1px solid var(--border); margin-bottom: 8px; }
-.period-group-header span { font-size: 0.8rem; font-weight: 600; color: var(--text); }
-.period-group-header em { font-style: normal; font-weight: 400; color: var(--text-muted); font-size: 0.7rem; }
-.period-group-header strong { font-size: 0.9rem; color: var(--red); white-space: nowrap; }
+.period-group-header { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; width: 100%; padding: 8px 4px; background: none; border: none; border-bottom: 1px solid var(--border); margin-bottom: 8px; color: var(--text); font-family: inherit; text-align: left; cursor: pointer; transition: var(--transition); }
+.period-group-header:hover { border-bottom-color: var(--accent); }
+.period-group-header:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.pgh-label { font-size: 0.8rem; font-weight: 600; }
+.pgh-label em { font-style: normal; font-weight: 400; color: var(--text-muted); font-size: 0.7rem; }
+.pgh-right { display: flex; align-items: baseline; gap: 10px; flex-shrink: 0; }
+.pgh-count { font-size: 0.7rem; color: var(--text-muted); }
+.pgh-total { font-size: 0.9rem; font-weight: 600; color: var(--red); white-space: nowrap; }
+.chevron { display: inline-block; color: var(--text-muted); font-size: 0.95rem; line-height: 1; transition: transform 0.2s ease; }
+.chevron.collapsed { transform: rotate(-90deg); }
+.collapsed-hint { text-align: center; color: var(--text-muted); padding: 10px 8px; font-size: 0.75rem; }
 
 .month-total-row { display: flex; justify-content: space-between; align-items: baseline; background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px 16px; margin-top: 4px; }
 .month-total-row span { font-size: 0.85rem; font-weight: 600; color: var(--text); }

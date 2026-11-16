@@ -28,6 +28,23 @@ function App() {
   const [showBudgetForm, setShowBudgetForm] = useState(false)
   const [activePeriod, setActivePeriod] = useState<1 | 2>(getPayPeriod())
   const [loading, setLoading] = useState(true)
+  // Which pay-period expense lists the user has folded away. Remembered on this
+  // device so a long month does not have to be re-folded on every visit.
+  const [collapsed, setCollapsed] = useState<Record<1 | 2, boolean>>(() => {
+    try {
+      const raw = localStorage.getItem('ph-budget-collapsed-periods')
+      if (raw) return { 1: false, 2: false, ...JSON.parse(raw) }
+    } catch (_e) { /* unreadable stored state - fall back to expanded */ }
+    return { 1: false, 2: false }
+  })
+
+  const toggleCollapsed = (period: 1 | 2) => {
+    setCollapsed(prev => {
+      const next: Record<1 | 2, boolean> = { ...prev, [period]: !prev[period] }
+      try { localStorage.setItem('ph-budget-collapsed-periods', JSON.stringify(next)) } catch (_e) { /* ignore */ }
+      return next
+    })
+  }
 
   useEffect(() => { loadMonth() }, [month])
   useEffect(() => { loadAllMonths() }, [])
@@ -79,15 +96,35 @@ function App() {
     setAllMonths(months.sort((a, b) => a.month.localeCompare(b.month)))
   }
 
+  /**
+   * Monthly Bills are marked Paid when the month contains a Rent or Utilities
+   * expense - but that was only recalculated when the month was loaded, so a
+   * freshly added Rent expense left the bill showing "Unpaid" until a reload.
+   * Recompute it right after every add/delete.
+   */
+  async function refreshBillsStatus(updatedTx: Transaction[]) {
+    const bills = monthData?.monthlyBills
+    if (!bills || bills.length === 0) return
+    const updatedBills = calculateMonthlyBillsPaidStatus(bills, updatedTx, month)
+    if (JSON.stringify(updatedBills) === JSON.stringify(bills)) return
+    const updated: MonthData = { ...monthData, monthlyBills: updatedBills }
+    await saveMonthData(updated)
+    setMonthData(updated)
+  }
+
   const handleAddExpense = async (tx: Omit<Transaction, 'id'>) => {
     const newTx: Transaction = { ...tx, id: crypto.randomUUID(), createdAt: Date.now() }
     await addTransaction(newTx)
-    setTransactions(sortTransactionsNewestFirst([newTx, ...transactions]))
+    const nextTx = sortTransactionsNewestFirst([newTx, ...transactions])
+    setTransactions(nextTx)
+    await refreshBillsStatus(nextTx)
   }
 
   const handleDeleteExpense = async (id: string) => {
     await deleteTransaction(id)
-    setTransactions(transactions.filter(t => t.id !== id))
+    const nextTx = transactions.filter(t => t.id !== id)
+    setTransactions(nextTx)
+    await refreshBillsStatus(nextTx)
   }
 
   const handleSaveSalary = async (period: 1 | 2, amount: number) => {
@@ -294,11 +331,27 @@ function App() {
           const periodTotal = p === 1 ? totals.period1 : totals.period2
           return (
             <div className="period-group" key={p}>
-              <div className="period-group-header">
-                <span>{PERIOD_LABEL[p]} <em>{PERIOD_PAYDAY[p]}</em></span>
-                <strong>{formatPHP(periodTotal)}</strong>
-              </div>
-              {list.length === 0 ? (
+              <button
+                type="button"
+                className="period-group-header"
+                onClick={() => toggleCollapsed(p)}
+                aria-expanded={!collapsed[p]}
+                title={collapsed[p] ? 'Show these expenses' : 'Hide these expenses'}
+              >
+                <span className="pgh-label">{PERIOD_LABEL[p]} <em>{PERIOD_PAYDAY[p]}</em></span>
+                <span className="pgh-right">
+                  <span className="pgh-count">{list.length} item{list.length === 1 ? '' : 's'}</span>
+                  <span className="pgh-total">{formatPHP(periodTotal)}</span>
+                  <span className={collapsed[p] ? 'chevron collapsed' : 'chevron'}>⌄</span>
+                </span>
+              </button>
+              {collapsed[p] ? (
+                <p className="collapsed-hint">
+                  {list.length === 0
+                    ? 'No expenses in this period.'
+                    : `${list.length} expense${list.length === 1 ? '' : 's'} hidden — tap the header to show`}
+                </p>
+              ) : list.length === 0 ? (
                 <p className="empty">No expenses in this period.</p>
               ) : (
                 <ul className="expense-list">
